@@ -52,15 +52,18 @@ private string generateConfig(const Diagram diagram)
 
     return format!configTemplate(
         categories.map!(a =>
-            format!"{
+            format!`{
                 label: '%s',
                 pointRadius: %s,
                 pointStyle: 'cross',
-                data: [\n  %-(%s,\n%)]
-            }"(
+                data: [
+                    %-(%s,
+                    %)
+                ]
+            }`(
                 label(a),
                 radius(a),
-                diagram.points(a).map!((const Diagram.Point a) => format!"{t: new Date('%s'), y: %s}"(
+                diagram.points(a).map!((const Diagram.Point a) => format!`{t: new Date('%s'), y: %s}`(
                     a.time.toISOExtString, a.duration.total!"msecs")
                 ),
             ),
@@ -72,7 +75,7 @@ private enum siteTemplate = `<!DOCTYPE html>
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Correlation Chain Stats</title>
+<title>EventStore Causation Graph</title>
 <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css"
     integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
 <script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js"></script>
