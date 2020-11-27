@@ -1,0 +1,8 @@
+# dub folder
+.dub
+
+# binary
+/eventstore-causation-graph
+
+# output
+/eventstore-causation-graph.html

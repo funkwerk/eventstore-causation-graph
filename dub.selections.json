@@ -1,0 +1,17 @@
+{
+	"fileVersion": 1,
+	"versions": {
+		"boilerplate": "1.5.17",
+		"cachetools": "0.3.1",
+		"dshould": "1.3.2",
+		"dxml": "0.4.3",
+		"prettyprint": "1.0.6",
+		"progress": "5.0.1",
+		"requests": "2.0.0",
+		"serialized": "1.1.9",
+		"std_data_json": "0.18.5",
+		"sumtype": "1.0.0",
+		"taggedalgebraic": "0.11.18",
+		"unit-threaded": "1.0.11"
+	}
+}

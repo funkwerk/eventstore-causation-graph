@@ -1,0 +1,14 @@
+{
+	"authors": [
+		"Mathis Beer"
+	],
+	"dependencies": {
+		"boilerplate": "~>1.5.17",
+		"progress": "~>5.0.1",
+		"requests": "~>2.0.0",
+		"serialized": "~>1.1.9",
+	},
+	"description": "Eventstore Causation Chain Grapher",
+	"license": "BSL-1.0",
+	"name": "eventstore-causation-graph"
+}
