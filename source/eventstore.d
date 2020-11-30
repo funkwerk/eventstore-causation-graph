@@ -71,15 +71,24 @@ struct UrlRange(T, alias decode = never)
             request.get.addHeaders(["Accept": "application/vnd.eventstore.atom+json"]);
         }
 
-        // stderr.writefln!"> %s"(url);
+        version (none)
+        {
+            import std.stdio : writefln;
 
-        auto stream = parseJSONStream(request.get.get(url).responseBody);
+            writefln!"> %s"(url);
+        }
+
+        auto response = request.get.get(url);
+
+        assert(response.code == 200);
+
+        auto stream = parseJSONStream(response.responseBody);
         auto data = text.json.Decode.decodeJson!(Data, decode)(stream, Data.stringof);
         auto next = data.links.find!(a => a.relation == "next");
 
         if (!next.empty)
         {
-            this.nextUrl = next.front.uri.replace("/20", "/1000");
+            this.nextUrl = next.front.uri.stepSize("1000");
         }
         else
         {
@@ -131,4 +140,17 @@ MetaData decode(T : MetaData)(const string metaData)
 
         return builder.value;
     }
+}
+
+private string stepSize(string uri, string newValue)
+{
+    const parts = uri.split("/");
+
+    // - look for <streamName>/<offset>/backward/20 pattern
+    // - replace with <streamName>/<offset>/backward/<newValue>
+    if (parts.length >= 2 && parts[$ - 2] == "backward")
+    {
+        return parts[0 .. $ - 1].chain(newValue.only).join("/");
+    }
+    return uri; // we tried.
 }
