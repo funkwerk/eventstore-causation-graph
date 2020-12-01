@@ -3,6 +3,7 @@ module html;
 import diagram;
 import std.algorithm;
 import std.conv;
+import std.datetime;
 import std.format;
 import std.range;
 
@@ -50,6 +51,12 @@ private string generateConfig(const Diagram diagram)
         return min(2.5f, max(0.3f, 50f / sqrt(cast(double) length)));
     }
 
+    alias percentile = (factor, points) => points
+        .map!(delegate Duration(const Diagram.Point point) { return point.duration; })
+        .array
+        .sort
+        [cast(size_t) (($ - 1) * factor)]; // factor 'th value
+
     return format!configTemplate(
         categories.map!(a =>
             format!`{
@@ -68,6 +75,8 @@ private string generateConfig(const Diagram diagram)
                 ),
             ),
         ),
+        // scale to the 99th percentile - ie. so that 99% of samples are visible (over all datasets).
+        percentile(0.99, categories.map!(a => diagram.points(a)).joiner).total!"msecs"
     );
 }
 
@@ -119,7 +128,8 @@ private enum configTemplate = `{
             y: {
                 type: 'linear',
                 ticks: {
-                    beginAtZero: true
+                    beginAtZero: true,
+                    max: %s
                 }
             }
         },
