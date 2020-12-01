@@ -10,10 +10,10 @@ public string generateHtml(const Diagram[string[]] diagrams)
 {
     auto sections = diagrams.keys.sort.array;
 
-    auto diagramScripts = diagrams.byKeyValue.enumerate.map!(
+    auto diagramScripts = sections.enumerate.map!(
         pair => diagramScriptTemplate
-            .replace("{desc}", pair[1].key.join(" > "))
-            .replace("{config}", pair[1].value.generateConfig)
+            .replace("{desc}", pair[1].join(" > "))
+            .replace("{config}", diagrams[pair[1]].generateConfig)
             .replace("{index}", pair[0].to!string)
     );
     auto diagramBodies = sections.enumerate.map!(
