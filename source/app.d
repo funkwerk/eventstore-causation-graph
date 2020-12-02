@@ -40,43 +40,40 @@ int main(string[] args)
 
     stderr.writefln!"Read all events.";
 
-    Appender!(string[]) correlationIds;
-    bool[string] correlationIdFound;
+    EventInfo[][string] eventsByCorrelationId;
 
-    foreach (stream; taskPool.parallel(new Bar().iter(streams.map!"a"), 1))
+    auto b = new Bar;
+
+    b.max = streams.length;
+    b.start;
+    foreach (stream; taskPool.parallel(streams.map!"a", 1))
     {
-        foreach (event; getStream!(Stream, decode)(baseUrl, stream.streamId))
+        scope(exit) synchronized b.next;
+        foreach (event; getStream!(EventInfo, decode)(baseUrl, stream.streamId))
         {
-            if (event.metaData.isNull)
-                continue;
-            if (event.metaData.get.correlationId.isNull)
+            if (event.timestamp.isNull || event.correlationId.isNull)
                 continue;
 
-            const correlationId = event.metaData.get.correlationId.get;
+            const correlationId = event.correlationId.get;
 
             synchronized
             {
-                if (correlationId !in correlationIdFound)
-                {
-                    correlationIdFound[correlationId] = true;
-                    correlationIds ~= correlationId;
-                }
+                eventsByCorrelationId[correlationId] ~= event;
             }
         }
     }
+    b.finish;
 
     stderr.writefln!"Gather correlation chains.";
 
     Diagram[string[]] diagrams;
 
-    foreach (correlationId; taskPool.parallel(new Bar().iter(correlationIds.data.map!"a"), 1))
+    foreach (correlationId, stream; eventsByCorrelationId)
     {
-        auto stream = getStream!(EventInfo, decode)(baseUrl, format!"$bc-%s"(correlationId))
-                .filter!(a => !a.timestamp.isNull)
-                .array.retro.array;
+        auto sortedStream = stream.sort!((a, b) => a.timestamp < b.timestamp).array;
 
         // extract correlation chains
-        foreach (chain; stream.findCorrelationChains)
+        foreach (chain; sortedStream.findCorrelationChains)
         {
             auto types = chain.map!"a.eventType".array;
 
@@ -84,20 +81,17 @@ int main(string[] args)
 
             if (chainTotalTime > 10.seconds) continue; // outlier
 
-            synchronized
-            {
-                auto diagram = diagrams.require(types, new Diagram(types));
+            auto diagram = diagrams.require(types, new Diagram(types));
 
-                diagram.add(chain.front.timestamp.get, chainTotalTime);
-                if (chain.length > 2)
+            diagram.add(chain.front.timestamp.get, chainTotalTime);
+            if (chain.length > 2)
+            {
+                foreach (pair; chain.slide(2))
                 {
-                    foreach (pair; chain.slide(2))
-                    {
-                        diagram.add(
-                            pair.front.timestamp.get,
-                            pair.back.timestamp.get - pair.front.timestamp.get,
-                            [pair.front.eventType, pair.back.eventType]);
-                    }
+                    diagram.add(
+                        pair.front.timestamp.get,
+                        pair.back.timestamp.get - pair.front.timestamp.get,
+                        [pair.front.eventType, pair.back.eventType]);
                 }
             }
         }
@@ -142,10 +136,11 @@ EventInfo decode(T : EventInfo)(const EventInfoDto event)
 {
     const eventId = event.eventId.idup;
     const eventType = event.streamId.until("-").toUTF8 ~ "." ~ event.eventType;
-    const timestamp = event.metaData.timestamp;
-    const causationId = event.metaData.causationId;
+    const timestamp = event.metaData.apply!"a.timestamp";
+    const correlationId = event.metaData.apply!"a.correlationId";
+    const causationId = event.metaData.apply!"a.causationId";
 
-    return EventInfo(eventId, eventType, timestamp, causationId);
+    return EventInfo(eventId, eventType, timestamp, correlationId, causationId);
 }
 
 alias decode = eventstore.decode;
@@ -174,6 +169,9 @@ struct EventInfo
 
     @ConstRead
     private Nullable!SysTime timestamp_;
+
+    @ConstRead
+    private Nullable!string correlationId_;
 
     @ConstRead
     private Nullable!string causationId_;
