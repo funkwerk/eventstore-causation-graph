@@ -108,6 +108,11 @@ struct MetaDataDto
     @(This.Default)
     Nullable!string causationId;
 
+    // how eventstore thinks causationId should be spelled
+    @(Json("$causedBy"))
+    @(This.Default)
+    Nullable!string causedBy;
+
     @(This.Default)
     Nullable!SysTime timestamp;
 
@@ -135,12 +140,14 @@ MetaData decode(T : MetaData)(const string metaData)
         auto builder = MetaData.Builder!();
 
         builder.correlationId = correlationId.apply!(a => a.idup);
-        builder.causationId = causationId.apply!(a => a.idup);
+        builder.causationId = causationId.orElse(causedBy).apply!(a => a.idup);
         builder.timestamp = timestamp;
 
         return builder.value;
     }
 }
+
+private alias orElse = (value, fallback) => value.isNull ? fallback : value;
 
 private string stepSize(string uri, string newValue)
 {
