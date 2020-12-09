@@ -5,6 +5,7 @@ import diagram;
 import eventstore;
 import html;
 import progress;
+import requests;
 import std.algorithm;
 import std.conv;
 import std.datetime;
@@ -21,6 +22,8 @@ int main(string[] args)
 {
     const string[] includes = args.getOptList("include");
     const bool verbose = args.getFlag("verbose");
+    const string user = args.getOpt("user");
+    const string pass = args.getOpt("pass");
     if (args.length <= 1)
     {
         stderr.writefln!"Usage: %s <url> [--include <stream>]"(args[0]);
@@ -28,9 +31,17 @@ int main(string[] args)
         stderr.writefln!"<url>: EventStore base URL (such as http://eventstore:2113)";
         stderr.writefln!"--include <stream>: Include this stream even if it's a projection";
         stderr.writefln!"--verbose: Show correlation IDs in tick labels";
+        stderr.writefln!"--user: EventStore user name";
+        stderr.writefln!"--pass: EventStore password";
         return 1;
     }
     const baseUrl = args[1];
+    BasicAuthentication authenticator = null;
+
+    if (!user.empty)
+    {
+        authenticator = new BasicAuthentication(user, pass);
+    }
 
     auto taskPool = new TaskPool(10);
     scope(exit) taskPool.stop;
@@ -51,7 +62,7 @@ int main(string[] args)
         return true;
     }
 
-    auto streams = getStream!(Stream, decode)(baseUrl, "$streams").filter!isRelevant.array;
+    auto streams = getStream!(Stream, decode)(baseUrl, "$streams", authenticator).filter!isRelevant.array;
 
     stderr.writefln!"Read all events.";
 
@@ -64,7 +75,7 @@ int main(string[] args)
     foreach (stream; taskPool.parallel(streams.map!"a", 1))
     {
         scope(exit) synchronized b.next;
-        foreach (event; getStream!(EventInfo, decode)(baseUrl, stream.streamId))
+        foreach (event; getStream!(EventInfo, decode)(baseUrl, stream.streamId, authenticator))
         {
             if (event.timestamp.isNull || event.correlationId.isNull)
                 continue;
@@ -241,6 +252,15 @@ bool getFlag(ref string[] args, string flag)
 
     args = args.filter!(a => a != flagWithDashes).array;
     return found;
+}
+
+string getOpt(ref string[] args, string flag)
+{
+    string[] result = args.getOptList(flag);
+
+    if (result.empty) return null;
+    enforce(result.length == 1, format!"'--%s' passed too many times"(flag));
+    return result.front;
 }
 
 string[] getOptList(ref string[] args, string flag)

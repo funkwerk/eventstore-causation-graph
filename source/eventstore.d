@@ -15,9 +15,9 @@ import text.json.Json;
 
 alias streamUrl = (baseUrl, stream) => format!"%s/streams/%s"(baseUrl, stream);
 
-auto getStream(T, alias decode = never)(string baseUrl, string stream)
+auto getStream(T, alias decode = never)(string baseUrl, string stream, BasicAuthentication authenticator)
 {
-    auto range = UrlRange!(T, decode)(baseUrl.streamUrl(stream));
+    auto range = UrlRange!(T, decode)(baseUrl.streamUrl(stream), authenticator);
 
     static assert(isInputRange!(typeof(range)));
 
@@ -28,6 +28,8 @@ auto getStream(T, alias decode = never)(string baseUrl, string stream)
 struct UrlRange(T, alias decode = never)
 {
     private string nextUrl;
+
+    private BasicAuthentication authenticator;
 
     public T[] front;
 
@@ -69,6 +71,7 @@ struct UrlRange(T, alias decode = never)
         if (request.isNull)
         {
             request = Nullable!Request(Request());
+            if (this.authenticator) request.authenticator = authenticator;
             request.get.addHeaders(["Accept": "application/vnd.eventstore.atom+json"]);
         }
 
@@ -81,15 +84,15 @@ struct UrlRange(T, alias decode = never)
 
         auto response = request.get.get(url);
 
-        assert(response.code == 200);
+        if (url.canFind("$streams"))
+            enforce(response.code == 200,
+                format!"Unexpected response code %s at URL %s Forgot to start the $streams projection?"(
+                    response.code, url));
+        else
+            enforce(response.code == 200,
+                format!"Unexpected response code %s at URL %s"(response.code, url));
 
         auto data = response.responseBody.data;
-
-        if (url.canFind("$streams"))
-            enforce(!data.empty, format!"No data found at URL %s Forgot to start the $streams projection?"(url));
-        else
-            enforce(!data.empty, format!"No data found at URL %s"(url));
-
         auto stream = parseJSONStream(data);
         auto decodedData = text.json.Decode.decodeJson!(Data, decode)(stream, Data.stringof);
         auto next = decodedData.links.find!(a => a.relation == "next");
