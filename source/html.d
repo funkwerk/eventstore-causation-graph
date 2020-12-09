@@ -7,14 +7,14 @@ import std.datetime;
 import std.format;
 import std.range;
 
-public string generateHtml(const Diagram[string[]] diagrams)
+public string generateHtml(const Diagram[string[]] diagrams, const bool verbose)
 {
     auto sections = diagrams.keys.sort.array;
 
     auto diagramScripts = sections.enumerate.map!(
         pair => diagramScriptTemplate
             .replace("{desc}", pair[1].join(" > "))
-            .replace("{config}", diagrams[pair[1]].generateConfig)
+            .replace("{config}", diagrams[pair[1]].generateConfig(verbose))
             .replace("{index}", pair[0].to!string)
     );
     auto diagramBodies = sections.enumerate.map!(
@@ -29,7 +29,7 @@ public string generateHtml(const Diagram[string[]] diagrams)
 }
 
 
-private string generateConfig(const Diagram diagram)
+private string generateConfig(const Diagram diagram, const bool verbose)
 {
     const string[][] categories = [(const(string)[]).init] ~ diagram.categories.filter!"a !is null".array;
 
@@ -51,6 +51,20 @@ private string generateConfig(const Diagram diagram)
         return min(2.5f, max(0.3f, 50f / sqrt(cast(double) length)));
     }
 
+    string datapoint(const Diagram.Point a)
+    {
+        if (verbose)
+        {
+            return format!`{t: new Date('%s'), y: %s, c: '%s'}`(
+                a.time.toISOExtString, a.duration.total!"msecs", a.correlationId);
+        }
+        else
+        {
+            return format!`{t: new Date('%s'), y: %s}`(
+                a.time.toISOExtString, a.duration.total!"msecs");
+        }
+    }
+
     alias percentile = (factor, points) => points
         .map!(delegate Duration(const Diagram.Point point) { return point.duration; })
         .array
@@ -70,13 +84,12 @@ private string generateConfig(const Diagram diagram)
             }`(
                 label(a),
                 radius(a),
-                diagram.points(a).map!((const Diagram.Point a) => format!`{t: new Date('%s'), y: %s}`(
-                    a.time.toISOExtString, a.duration.total!"msecs")
-                ),
+                diagram.points(a).map!datapoint,
             ),
         ),
         // scale to the 99th percentile - ie. so that 99% of samples are visible (over all datasets).
-        percentile(0.99, categories.map!(a => diagram.points(a)).joiner).total!"msecs"
+        percentile(0.99, categories.map!(a => diagram.points(a)).joiner).total!"msecs",
+        verbose ? tooltipLabelCallback : `{}`,
     );
 }
 
@@ -109,6 +122,14 @@ private enum diagramBodyTemplate = `
 <h3>{desc}</h3>
 <div class="container" style="width: 60%; margin-left: 10%;"><canvas id="chart{index}"></canvas></div>`;
 
+enum tooltipLabelCallback = `{
+    label: function(tooltipItem, data) {
+        var label = data.datasets[tooltipItem.datasetIndex].data[tooltipItem.index].c || '';
+
+        return 'CorrelationId: ' + label;
+    }
+}`;
+
 private enum configTemplate = `{
     type: 'scatter',
     data: {
@@ -132,6 +153,9 @@ private enum configTemplate = `{
                     max: %s
                 }
             }
+        },
+        tooltips: {
+            callbacks: %s
         },
         plugins: {
             colorschemes: {

@@ -11,6 +11,8 @@ class Diagram
         SysTime time;
 
         Duration duration;
+
+        string correlationId;
     }
 
     @ConstRead
@@ -19,9 +21,9 @@ class Diagram
     @(This.Init!null)
     private Appender!(Point[])[string[]] points_;
 
-    public void add(SysTime time, Duration duration, string[] subcategory = null)
+    public void add(SysTime time, Duration duration, string correlationId, string[] subcategory = null)
     {
-        points_.require(subcategory, appender!(Point[])()) ~= Point(time, duration);
+        points_.require(subcategory, appender!(Point[])()) ~= Point(time, duration, correlationId);
     }
 
     public const(string)[][] categories() const

@@ -19,13 +19,15 @@ import std.utf;
 
 int main(string[] args)
 {
-    string[] includes = args.getOpt("include");
+    const string[] includes = args.getOptList("include");
+    const bool verbose = args.getFlag("verbose");
     if (args.length <= 1)
     {
         stderr.writefln!"Usage: %s <url> [--include <stream>]"(args[0]);
         stderr.writefln!"";
         stderr.writefln!"<url>: EventStore base URL (such as http://eventstore:2113)";
         stderr.writefln!"--include <stream>: Include this stream even if it's a projection";
+        stderr.writefln!"--verbose: Show correlation IDs in tick labels";
         return 1;
     }
     const baseUrl = args[1];
@@ -99,7 +101,7 @@ int main(string[] args)
 
             auto diagram = diagrams.require(types, new Diagram(types));
 
-            diagram.add(chain.front.timestamp.get, chainTotalTime);
+            diagram.add(chain.front.timestamp.get, chainTotalTime, correlationId);
             if (chain.length > 2)
             {
                 foreach (pair; chain.slide(2))
@@ -107,6 +109,7 @@ int main(string[] args)
                     diagram.add(
                         pair.front.timestamp.get,
                         pair.back.timestamp.get - pair.front.timestamp.get,
+                        correlationId,
                         [pair.front.eventType, pair.back.eventType]);
                 }
             }
@@ -115,7 +118,7 @@ int main(string[] args)
 
     stderr.writefln!"Write result.";
 
-    std.file.write("eventstore-causation-graph.html", diagrams.generateHtml);
+    std.file.write("eventstore-causation-graph.html", diagrams.generateHtml(verbose));
 
     stderr.writefln!"Done.";
     return 0;
@@ -231,7 +234,16 @@ struct Stream
     mixin(GenerateAll);
 }
 
-string[] getOpt(ref string[] args, string flag)
+bool getFlag(ref string[] args, string flag)
+{
+    const string flagWithDashes = "--" ~ flag;
+    const bool found = args.canFind(flagWithDashes);
+
+    args = args.filter!(a => a != flagWithDashes).array;
+    return found;
+}
+
+string[] getOptList(ref string[] args, string flag)
 {
     string flagTwoArgs = "--" ~ flag;
     string flagOneArg = "--" ~ flag ~ "=";
