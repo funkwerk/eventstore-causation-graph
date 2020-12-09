@@ -141,12 +141,36 @@ out (result; result.all!(a => a.slide(2).all!(pair => pair.front.eventId == pair
             }
             return findChain(event.causationId.get) ~ *event;
         }
-        assert(false);
+        throw new Exception(format!"dangling causation chain: event %s not known"(eventId));
+    }
+
+    EventInfo[] findChainEvent(const EventInfo event)
+    {
+        return findChain(event.eventId);
     }
 
     // construct causation chains for them
-    return terminals.map!(a => findChain(a.eventId)).filter!(a => a.length > 1).array;
+    return terminals
+            .map!(a => findChainEvent(a).exceptionToNull)
+            .nonNull
+            .filter!(a => a.length > 1)
+            .array;
 }
+
+auto exceptionToNull(T)(lazy T value)
+{
+    try
+    {
+        return Nullable!(typeof(value))(value);
+    }
+    catch (Exception exc)
+    {
+        stderr.writefln!"WARNING: Entry ignored: %s"(exc.msg);
+        return Nullable!(typeof(value))();
+    }
+}
+
+alias nonNull = range => range.filter!"!a.isNull".map!"a.get";
 
 EventInfo decode(T : EventInfo)(const EventInfoDto event)
 {
