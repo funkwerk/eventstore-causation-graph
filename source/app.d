@@ -8,6 +8,7 @@ import progress;
 import std.algorithm;
 import std.conv;
 import std.datetime;
+import std.exception;
 import std.file;
 import std.format;
 import std.parallelism;
@@ -18,9 +19,13 @@ import std.utf;
 
 int main(string[] args)
 {
+    string[] includes = args.getOpt("include");
     if (args.length <= 1)
     {
-        stderr.writefln!"Usage: %s <EventStore base URL (such as http://eventstore:2113/)>"(args[0]);
+        stderr.writefln!"Usage: %s <url> [--include <stream>]"(args[0]);
+        stderr.writefln!"";
+        stderr.writefln!"<url>: EventStore base URL (such as http://eventstore:2113)";
+        stderr.writefln!"--include <stream>: Include this stream even if it's a projection";
         return 1;
     }
     const baseUrl = args[1];
@@ -32,8 +37,16 @@ int main(string[] args)
 
     bool isRelevant(const Stream stream)
     {
+        if (includes.canFind(stream.streamId)) return true;
         // neither projection nor configuration stream describing another stream
-        return stream.eventType != "$>" && stream.eventType != "$metadata";
+        const isProjection = stream.eventType == "$>";
+        const isMetaData = stream.eventType == "$metadata";
+        if (isProjection || isMetaData)
+        {
+            stderr.writefln!"> Excluding stream %s: EventType %s"(stream.streamId, stream.eventType);
+            return false;
+        }
+        return true;
     }
 
     auto streams = getStream!(Stream, decode)(baseUrl, "$streams").filter!isRelevant.array;
@@ -58,7 +71,10 @@ int main(string[] args)
 
             synchronized
             {
-                eventsByCorrelationId[correlationId] ~= event;
+                if (!eventsByCorrelationId.get(correlationId, null).canFind!(a => a.eventId == event.eventId))
+                {
+                    eventsByCorrelationId[correlationId] ~= event;
+                }
             }
         }
     }
@@ -189,4 +205,29 @@ struct Stream
     Nullable!MetaData metaData;
 
     mixin(GenerateAll);
+}
+
+string[] getOpt(ref string[] args, string flag)
+{
+    string flagTwoArgs = "--" ~ flag;
+    string flagOneArg = "--" ~ flag ~ "=";
+    string[] result;
+    string[] remainingArgs;
+    for (int i = 0; i < args.length; i++)
+    {
+        if (args[i] == flagTwoArgs)
+        {
+            enforce(i + 1 < args.length, "missing parameter for " ~ flagTwoArgs);
+            result ~= args[++i];
+            continue;
+        }
+        if (args[i].startsWith(flagOneArg))
+        {
+            result ~= args[i].drop(flagOneArg.length).array.toUTF8;
+            continue;
+        }
+        remainingArgs ~= args[i];
+    }
+    args = remainingArgs;
+    return result;
 }
