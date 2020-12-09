@@ -6,6 +6,7 @@ import funkwerk.stdx.data.json.parser;
 import requests;
 import std.algorithm;
 import std.datetime;
+import std.exception;
 import std.format;
 import std.range;
 import std.typecons;
@@ -82,9 +83,16 @@ struct UrlRange(T, alias decode = never)
 
         assert(response.code == 200);
 
-        auto stream = parseJSONStream(response.responseBody.data);
-        auto data = text.json.Decode.decodeJson!(Data, decode)(stream, Data.stringof);
-        auto next = data.links.find!(a => a.relation == "next");
+        auto data = response.responseBody.data;
+
+        if (url.canFind("$streams"))
+            enforce(!data.empty, format!"No data found at URL %s Forgot to start the $streams projection?"(url));
+        else
+            enforce(!data.empty, format!"No data found at URL %s"(url));
+
+        auto stream = parseJSONStream(data);
+        auto decodedData = text.json.Decode.decodeJson!(Data, decode)(stream, Data.stringof);
+        auto next = decodedData.links.find!(a => a.relation == "next");
 
         if (!next.empty)
         {
@@ -94,7 +102,7 @@ struct UrlRange(T, alias decode = never)
         {
             this.nextUrl = null;
         }
-        this.front = data.entries;
+        this.front = decodedData.entries;
     }
 }
 
